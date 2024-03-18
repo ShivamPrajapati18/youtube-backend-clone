@@ -40,7 +40,7 @@ const userSchema = new mongoose.Schema({
         type : String,
         required : true
     },
-    refereshToken : {
+    refreshToken : {
         type :String
     }
 },{timestamps : true})
@@ -71,7 +71,7 @@ userSchema.methods.refreshTokenGenerator = function (){
         _id : this._id
     },process.env.REFRESH_TOKEN_SECRET,
     {
-        expiresIn : process.env.REFRESH_TOKEN_DURATION
+        expiresIn : "10d"
     })
 }
 
