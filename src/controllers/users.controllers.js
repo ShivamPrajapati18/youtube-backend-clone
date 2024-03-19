@@ -4,6 +4,11 @@ import ApiResponse from "../utils/apiResponse.js"
 import asyncHandler from "../utils/asyncHandler.js"
 import { cloudinaryUploads } from "../utils/cloudinary.js"
 
+const cookieOption = {
+    httpOnly: true,
+    secure: true
+}
+
 const registerUser = asyncHandler(async (req, res) => {
     const { fullname, username, email, password } = req.body
 
@@ -62,58 +67,102 @@ const registerUser = asyncHandler(async (req, res) => {
 
 })
 
-const loginUser = asyncHandler( async (req,res)=>{
-    const { username , email , password } = req.body
+const loginUser = asyncHandler(async (req, res) => {
+    const { username, email, password } = req.body
 
-    if(!(username || email)){
-        throw new ApiError(400,"Please Provide Credential")
+    if (!(username || email)) {
+        throw new ApiError(400, "Please Provide Credential")
     }
     const user = await User.findOne({
-        $or : [{username},{email}]
+        $or: [{ username }, { email }]
     })
 
-    if(!user){
-        throw new ApiError(404,"User Not Found")
+    if (!user) {
+        throw new ApiError(404, "User Not Found")
     }
 
     const passwordValid = user.isPasswordCorrect(password)
 
-    if(!passwordValid){
-        throw new ApiError(400,"Password is not correct")
+    if (!passwordValid) {
+        throw new ApiError(400, "Password is not correct")
     }
-    const {refreshToken,accessToken} = await accessAndRefreshTokenGenerator(user._id)
+    const { refreshToken, accessToken } = await accessAndRefreshTokenGenerator(user._id)
 
     const loggedIn = await User.findById(user._id).select("-password -refreshToken")
 
-    const option = {
-        httpOnly : true,
-        secure : true
-    }
     res.status(200)
-    .cookie("accessToken",accessToken,option)
-    .cookie("refershToken",refreshToken,option)
-    .send(
-        new ApiResponse(200,{user : loggedIn, refreshToken,accessToken},"User Logged In Successfully")
-    )
+        .cookie("accessToken", accessToken, cookieOption)
+        .cookie("refreshToken", refreshToken, cookieOption)
+        .send(
+            new ApiResponse(200, { user: loggedIn, refreshToken, accessToken }, "User Logged In Successfully")
+        )
 
 })
 
-async function accessAndRefreshTokenGenerator(userId){
+async function accessAndRefreshTokenGenerator(userId) {
     try {
         const user = await User.findById(userId)
         const accessToken = user.accessTokenGenerator()
         const refreshToken = user.refreshTokenGenerator()
         user.refreshToken = refreshToken
-        user.save({validateBeforeSave : false})
-        return {refreshToken , accessToken}
+        await user.save({ validateBeforeSave: false })
+        return { refreshToken, accessToken }
     } catch (error) {
-        console.log(" Error in accesstoken ",error)
-        throw new ApiError(400,"Error in accesstoken ",)   
+        console.log(" Error in accesstoken ", error)
+        throw new ApiError(400, "Error in accesstoken ",)
     }
 }
+
+const logoutUser = asyncHandler(async (req, res) => {
+    const user = req.user
+
+    await User.findByIdAndUpdate(user._id, {
+        $set: { refreshToken: "" }
+    })
+
+    res.status(200)
+        .clearCookie("accessToken")
+        .clearCookie("refreshToken")
+        .send(
+            { message: "User Logout Successfull" }
+        )
+})
+
+// const refreshAccessToken = asyncHandler(async (req,res)=>{
+//     const refreshToken = req.user?.refreshToken
+// })
+
+const changePassword = asyncHandler(async (req, res) => {
+    try {
+        const { oldpassword, newpassword } = req.body
+        // const user = req.user
+        console.log(oldpassword,newpassword);
+        console.log(req.user?._id);
+        const user = await User.findById(req.user?._id)
+        console.log("user - " ,user);
+        const isValidPassword = user.isPasswordCorrect(oldpassword)
+        console.log(isValidPassword);
+
+        if (!isValidPassword) {
+            throw new ApiError(400, "Old Password Is wrong")
+        }
+
+        user.password = newpassword
+        await user.save({validateBeforeSave : false})
+
+        res.status(200).send({
+            message: "Password Updated Successfully"
+        })
+    } catch (error) {
+        console.error(error);
+        throw new ApiError(500, "Error while updating the password")
+    }
+})
 
 
 export {
     registerUser,
-    loginUser
+    loginUser,
+    logoutUser,
+    changePassword
 }
