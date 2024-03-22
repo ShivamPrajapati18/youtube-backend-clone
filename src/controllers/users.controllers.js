@@ -3,6 +3,7 @@ import ApiError from "../utils/apiError.js"
 import ApiResponse from "../utils/apiResponse.js"
 import asyncHandler from "../utils/asyncHandler.js"
 import { cloudinaryUploads } from "../utils/cloudinary.js"
+import jwt from "jsonwebtoken"
 
 const cookieOption = {
     httpOnly: true,
@@ -117,7 +118,7 @@ const logoutUser = asyncHandler(async (req, res) => {
     const user = req.user
 
     await User.findByIdAndUpdate(user._id, {
-        $set: { refreshToken: "" }
+        $set: { refreshToken: undefined }
     })
 
     res.status(200)
@@ -128,18 +129,35 @@ const logoutUser = asyncHandler(async (req, res) => {
         )
 })
 
-// const refreshAccessToken = asyncHandler(async (req,res)=>{
-//     const refreshToken = req.user?.refreshToken
-// })
+const refreshAccessToken = asyncHandler(async (req, res) => {
+    const incomingRefreshToken = req.cookies.refreshToken || req.header.refreshToken
+
+    const decodeRefreshToken = jwt.verify(incomingRefreshToken , process.env.REFRESH_TOKEN_SECRET)
+
+    if(!decodeRefreshToken){
+        throw new ApiError(401,"Refresh Token Has been Expired and Used")
+    }
+
+    const {accessToken , refreshToken}=await accessAndRefreshTokenGenerator(decodeRefreshToken?._id)
+
+    res.
+    status(200)
+    .cookie("accessToken",accessToken,cookieOption)
+    .cookie("refreshToken",refreshToken,cookieOption)
+    .json({
+        message : "Token are Refreshed"
+    })
+    
+})
 
 const changePassword = asyncHandler(async (req, res) => {
     try {
         const { oldpassword, newpassword } = req.body
         // const user = req.user
-        console.log(oldpassword,newpassword);
+        console.log(oldpassword, newpassword);
         console.log(req.user?._id);
         const user = await User.findById(req.user?._id)
-        console.log("user - " ,user);
+        console.log("user - ", user);
         const isValidPassword = user.isPasswordCorrect(oldpassword)
         console.log(isValidPassword);
 
@@ -148,7 +166,7 @@ const changePassword = asyncHandler(async (req, res) => {
         }
 
         user.password = newpassword
-        await user.save({validateBeforeSave : false})
+        await user.save({ validateBeforeSave: false })
 
         res.status(200).send({
             message: "Password Updated Successfully"
@@ -164,5 +182,6 @@ export {
     registerUser,
     loginUser,
     logoutUser,
-    changePassword
+    changePassword,
+    refreshAccessToken
 }
